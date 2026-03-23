@@ -5,11 +5,13 @@ from psycopg import errors
 import jwt
 from datetime import datetime, timedelta, timezone
 import os
+import uuid
 
 app = Flask(__name__)
 
 secret = os.getenv("JWT_SECRET")
 db_url = os.getenv("DATABASE_URL")
+UPLOADDIR = "uploads"
 
 # first 4 functions are db helpers specifically
 # can be moved to separate files as the project is expanded
@@ -23,6 +25,16 @@ def init_db():
                     user_id SERIAL PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS documents (
+                    document_id TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(user_id),
+                    filename TEXT NOT NULL,
+                    stored_path TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    upload_date TIMESTAMP
                 )
             """)
 
@@ -79,6 +91,28 @@ def token_gen(username, uid):
     return jwt.encode(payload, secret, algorithm="HS256")
 
 
+def getUserIdFromToken():
+    #token value
+    authHeader =request.headers.get("Authorization")
+    if authHeader == None:
+        return None
+    if not (authHeader[0:7] == "Bearer "):
+        return None
+
+    #getting everything after the space (the token)
+    token= authHeader.split(" ", 1)[1]
+    try:
+        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        return int(payload["sub"])
+    except:
+        print("error in the token")
+        return None
+
+def insertDocument(document_id, user_id, filename, stored_path, status):
+    with psycopg.connect(db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO documents (document_id, user_id, filename, stored_path, status) VALUES (%s, %s, %s, %s, %s)""", (document_id, user_id, filename, stored_path, status))
+        conn.commit()
 
 
 ####################################
@@ -147,6 +181,40 @@ def login():
         "token": token,
         "user_id": user["user_id"]
     }), 200
+
+
+@app.post("/documents")
+def upload_document():
+    user_id = getUserIdFromToken()
+
+    if user_id == None:
+        return jsonify({"login first": "Unauthorized"}), 401
+
+    #get users file
+    uploadedFile = request.files["file"]
+
+    document_id = str(uuid.uuid4())
+    stored_filename = f"{document_id}_{uploadedFile.filename}"
+    stored_path = os.path.join(UPLOADDIR, stored_filename)
+    os.makedirs(UPLOADDIR, exist_ok=True) #make sure foler exists
+
+    uploadedFile.save(stored_path)
+
+    insertDocument(
+        document_id=document_id,
+        user_id=user_id,
+        filename=uploadedFile.filename,
+        stored_path=stored_path,
+        status="processing"
+    )
+
+    return jsonify({
+        "message": "PDF uploaded, processing started",
+        "document_id": document_id,
+        "status": "processing"
+    }), 202
+
+
 
 
 if __name__ == "__main__":
