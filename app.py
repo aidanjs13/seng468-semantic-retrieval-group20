@@ -6,6 +6,8 @@ import jwt
 from datetime import datetime, timedelta, timezone
 import os
 import uuid
+import fitz
+import re
 
 app = Flask(__name__)
 
@@ -114,6 +116,27 @@ def insertDocument(document_id, user_id, filename, stored_path, status):
             cur.execute("""INSERT INTO documents (document_id, user_id, filename, stored_path, status) VALUES (%s, %s, %s, %s, %s)""", (document_id, user_id, filename, stored_path, status))
         conn.commit()
 
+# placeholder search (may be moved to worker depending on final structure)
+def get_doc_by_user(uid):
+    # get users documents
+    with psycopg.connect(db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT document_id, filename, stored_path
+                FROM documents
+                WHERE user_id = %s
+            """, (uid,))
+            rows = cur.fetchall()
+
+    # return document info for parser
+    return [
+        {
+            "doc_id": row[0],
+            "filename": row[1],
+            "path": row[2]
+        }
+        for row in rows
+    ]
 
 ####################################
 # API ENDPOINTS
