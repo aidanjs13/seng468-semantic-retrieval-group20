@@ -153,10 +153,11 @@ def pdf_to_paragraphs(pdf):
     # this function does NOT clean the text yet
     # we may have to modify the logic for this to get nicer paragraphs
     # just grabs "blocks", defined according to PyMuPDF library
+    block_text = []
     for page in this_pdf:
         blocks = page.get_text("blocks")
 
-        block_text = [block[4] for block in blocks]
+        block_text += [block[4] for block in blocks]
     
     this_pdf.close()
 
@@ -277,7 +278,7 @@ def search():
     sample_paragraphs = []
 
     for doc in users_docs:
-        doc_paragraphs = pdf_to_paragraphs(doc["stored_path"])
+        doc_paragraphs = pdf_to_paragraphs(doc["path"])
         # using block here, since technically block and not paragraph
         for block in doc_paragraphs:
             if search_query in block.lower():
@@ -285,11 +286,11 @@ def search():
                     "text" : block,
                     # using placeholder score for now
                     "score" : 0.0,
-                    "document_id" : doc["document_id"],
+                    "document_id" : doc["doc_id"],
                     "filename" : doc["filename"]
                 })
 
-                if len(sample_paragraphs == 5):
+                if len(sample_paragraphs) == 5:
                     return jsonify(sample_paragraphs), 200
                 
     return jsonify(sample_paragraphs), 200
