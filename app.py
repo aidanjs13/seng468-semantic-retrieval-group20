@@ -6,7 +6,7 @@ import jwt
 from datetime import datetime, timedelta, timezone
 import os
 import uuid
-import fitz
+import pymupdf
 import re
 
 app = Flask(__name__)
@@ -117,6 +117,7 @@ def insertDocument(document_id, user_id, filename, stored_path, status):
         conn.commit()
 
 # placeholder search (may be moved to worker depending on final structure)
+# we CAN reuse this later
 def get_doc_by_user(uid):
     # get users documents
     with psycopg.connect(db_url) as conn:
@@ -137,6 +138,29 @@ def get_doc_by_user(uid):
         }
         for row in rows
     ]
+
+# pdf is the pdf directory
+# we CAN reuse this later
+
+# This is named pdf_to_paragraphs, but it really is to blocks
+# where blocks are defined by the PyMuPDF library
+# this seemed adequate for the checkpoint
+def pdf_to_paragraphs(pdf):
+    try:
+        this_pdf = pymupdf.open(pdf)
+    except Exception:
+        return []
+    # this function does NOT clean the text yet
+    # we may have to modify the logic for this to get nicer paragraphs
+    # just grabs "blocks", defined according to PyMuPDF library
+    for page in this_pdf:
+        blocks = page.get_text("blocks")
+
+        block_text = [block[4] for block in blocks]
+    
+    this_pdf.close()
+
+    return block_text
 
 ####################################
 # API ENDPOINTS
@@ -238,7 +262,37 @@ def upload_document():
     }), 202
 
 
+# TEMPORARY search function
+# will need to rework this as scoring is added
+# currently just grabs first 5 paragraphs containing the query
+@app.get("/search")
+def search():
+    user_id = getUserIdFromToken()
+    if user_id is None:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    # prep for checking paragraphs
+    search_query = (request.args.get("q") or "").strip().lower()
+    users_docs = get_doc_by_user(user_id)
+    sample_paragraphs = []
 
+    for doc in users_docs:
+        doc_paragraphs = pdf_to_paragraphs(doc["stored_path"])
+        # using block here, since technically block and not paragraph
+        for block in doc_paragraphs:
+            if search_query in block.lower():
+                sample_paragraphs.append({
+                    "text" : block,
+                    # using placeholder score for now
+                    "score" : 0.0,
+                    "document_id" : doc["document_id"],
+                    "filename" : doc["filename"]
+                })
+
+                if len(sample_paragraphs == 5):
+                    return jsonify(sample_paragraphs), 200
+                
+    return jsonify(sample_paragraphs), 200
 
 if __name__ == "__main__":
     # initialize db then expose on port 8080
