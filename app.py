@@ -139,8 +139,62 @@ def get_doc_by_user(uid):
         for row in rows
     ]
 
-# pdf is the pdf directory
-# we CAN reuse this later
+def get_documents_list(uid):
+    with psycopg.connect(db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT document_id, filename, upload_date, status
+                FROM documents
+                WHERE user_id = %s
+                ORDER BY upload_date DESC
+            """, (uid,))
+            rows = cur.fetchall()
+
+    return [
+        {
+            "document_id": row[0],
+            "filename": row[1],
+            "upload_date": row[2],
+            "status": row[3],
+            "page_count": None
+        }
+        for row in rows
+    ]
+
+
+def get_document_by_id(uid, document_id):
+    with psycopg.connect(db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT document_id, filename, stored_path, status
+                FROM documents
+                WHERE user_id = %s AND document_id = %s
+            """, (uid, document_id))
+            row = cur.fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "document_id": row[0],
+        "filename": row[1],
+        "stored_path": row[2],
+        "status": row[3]
+    }
+
+
+
+def delete_document_from_db(uid, document_id):
+    with psycopg.connect(db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                DELETE FROM documents
+                WHERE user_id = %s AND document_id = %s
+            """, (uid, document_id))
+        conn.commit()
+
+
+
 
 # This is named pdf_to_paragraphs, but it really is to blocks
 # where blocks are defined by the PyMuPDF library
@@ -261,6 +315,41 @@ def upload_document():
         "document_id": document_id,
         "status": "processing"
     }), 202
+
+
+@app.get("/documents")
+def get_documents():
+    user_id = getUserIdFromToken()
+
+    if user_id is None:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    user_docs = get_documents_list(user_id)
+
+    return jsonify(user_docs), 200
+
+
+@app.delete("/documents/<document_id>")
+def delete_document(document_id):
+    user_id = getUserIdFromToken()
+
+    if user_id is None:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    doc = get_document_by_id(user_id, document_id)
+
+    if doc is None:
+        return jsonify({"error": "Document not found"}), 404
+
+    if os.path.exists(doc["stored_path"]):
+        os.remove(doc["stored_path"])
+
+    delete_document_from_db(user_id, document_id)
+
+    return jsonify({
+        "message": "Document deleted successfully",
+        "document_id": document_id
+    }), 200
 
 
 # TEMPORARY search function
