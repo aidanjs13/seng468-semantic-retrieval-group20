@@ -6,14 +6,19 @@ import jwt
 from datetime import datetime, timedelta, timezone
 import os
 import uuid
+from pgvector.psycopg import register_vector
+from sentence_transformers import SentenceTransformer
 import pymupdf
 import re
 
 app = Flask(__name__)
 
+
 secret = os.getenv("JWT_SECRET")
 db_url = os.getenv("DATABASE_URL")
 UPLOADDIR = "uploads"
+vector_embed = SentenceTransformer("all-MiniLM-L6-v2")
+
 
 # first 4 functions are db helpers specifically
 # can be moved to separate files as the project is expanded
@@ -22,6 +27,7 @@ UPLOADDIR = "uploads"
 def init_db():
     with psycopg.connect(db_url) as conn:
         with conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     user_id SERIAL PRIMARY KEY,
@@ -39,6 +45,16 @@ def init_db():
                     upload_date TIMESTAMP
                 )
             """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS doc_chunks (
+                chunk_id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL REFERENCES documents(document_id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(user_id),
+                text TEXT NOT NULL,
+                embedding VECTOR(384)
+                )
+            """)
+            
 
 # Queries db for a user
 # returns None or a dict containing the tuple's contents
@@ -217,6 +233,52 @@ def pdf_to_paragraphs(pdf):
 
     return block_text
 
+def insert_to_vectordb(uid, document_id, pdf):
+    # turn pdf to blocks using the above helper
+    blocks_to_insert = pdf_to_paragraphs(pdf)
+    if len(blocks_to_insert) == 0:
+        return
+    
+    vectors = vector_embed.encode(blocks_to_insert, normalize_embeddings=True)
+
+    with psycopg.connect(db_url) as conn:
+        register_vector(conn)
+
+        with conn.cursor() as cur:
+            # this first query is just for stability, not sure if necessary
+
+            # in the case that we for some reason redo an insert, just remove
+            # the old one
+            cur.execute("""
+                DELETE FROM doc_chunks
+                WHERE document_id = %s
+            """, (document_id,))
+
+            # inserts the chunks and associated text
+            
+            # stores a unique ID for each chunk, as well as information
+            # such as user and document
+            for block, vector in zip(blocks_to_insert, vectors):
+                cur.execute("""
+                    INSERT INTO doc_chunks (
+                        chunk_id,
+                        document_id,
+                        user_id,
+                        text,
+                        embedding
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    str(uuid.uuid4()),
+                    document_id,
+                    uid,
+                    block,
+                    vector.tolist()
+                ))
+        conn.commit()
+    
+
+
 ####################################
 # API ENDPOINTS
 ####################################
@@ -309,6 +371,11 @@ def upload_document():
         stored_path=stored_path,
         status="processing"
     )
+
+    #### TEMPORARY #####
+    # This is for testing purposes of inserting to the vector DB
+    insert_to_vectordb(user_id, document_id, stored_path)
+
 
     return jsonify({
         "message": "PDF uploaded, processing started",
