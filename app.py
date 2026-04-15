@@ -276,7 +276,40 @@ def insert_to_vectordb(uid, document_id, pdf):
                     vector.tolist()
                 ))
         conn.commit()
-    
+
+
+
+
+def search_chunks_by_embedding(uid, query):
+    # convert query to embedding vector
+    query_vector = vector_embed.encode(query, normalize_embeddings=True)
+
+    with psycopg.connect(db_url) as conn:
+        register_vector(conn)
+
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT dc.text, dc.document_id, d.filename,
+                       dc.embedding <-> %s::vector AS distance
+                FROM doc_chunks dc
+                JOIN documents d
+                  ON dc.document_id = d.document_id
+                WHERE dc.user_id = %s
+                ORDER BY dc.embedding <-> %s::vector
+                LIMIT 5
+            """, (query_vector.tolist(), uid, query_vector.tolist()))
+
+            rows = cur.fetchall()
+
+    return [
+        {
+            "text": row[0],
+            "score": 1-float(row[3]),  #higher means better match
+            "document_id": row[1],
+            "filename": row[2]
+        }
+        for row in rows
+    ]
 
 
 ####################################
@@ -427,29 +460,15 @@ def search():
     user_id = getUserIdFromToken()
     if user_id is None:
         return jsonify({"error": "Unauthorized"}), 401
-    
-    # prep for checking paragraphs
-    search_query = (request.args.get("q") or "").strip().lower()
-    users_docs = get_doc_by_user(user_id)
-    sample_paragraphs = []
 
-    for doc in users_docs:
-        doc_paragraphs = pdf_to_paragraphs(doc["path"])
-        # using block here, since technically block and not paragraph
-        for block in doc_paragraphs:
-            if search_query in block.lower():
-                sample_paragraphs.append({
-                    "text" : block,
-                    # using placeholder score for now
-                    "score" : 0.0,
-                    "document_id" : doc["doc_id"],
-                    "filename" : doc["filename"]
-                })
+    search_query = (request.args.get("q") or "").strip()
 
-                if len(sample_paragraphs) == 5:
-                    return jsonify(sample_paragraphs), 200
-                
-    return jsonify(sample_paragraphs), 200
+    if search_query == "":
+        return jsonify([]), 200
+
+    results = search_chunks_by_embedding(user_id, search_query)
+
+    return jsonify(results), 200
 
 if __name__ == "__main__":
     # initialize db then expose on port 8080
