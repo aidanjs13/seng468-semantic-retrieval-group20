@@ -11,7 +11,7 @@ from sentence_transformers import SentenceTransformer
 import pymupdf
 import re
 
-from miniostorage import init_minio_bucket, upload_pdf, delete_pdf
+from miniostorage import init_minio_bucket, upload_pdf, get_pdf, delete_pdf
 
 
 app = Flask(__name__)
@@ -236,49 +236,64 @@ def pdf_to_paragraphs(pdf):
 
     return block_text
 
-def insert_to_vectordb(uid, document_id, pdf):
+
+def insert_to_vectordb(uid, document_id, pdf_name):
     # turn pdf to blocks using the above helper
-    blocks_to_insert = pdf_to_paragraphs(pdf)
-    if len(blocks_to_insert) == 0:
-        return
-    
-    vectors = vector_embed.encode(blocks_to_insert, normalize_embeddings=True)
+    os.makedirs(UPLOADDIR, exist_ok = True)
+    tempfilepath = os.path.join(UPLOADDIR, f"{document_id}.pdf")
 
-    with psycopg.connect(db_url) as conn:
-        register_vector(conn)
+    # try block is for inserting to vector db
+    try:
+        get_pdf(pdf_name, tempfilepath)
 
-        with conn.cursor() as cur:
-            # this first query is just for stability, not sure if necessary
+        blocks_to_insert = pdf_to_paragraphs(tempfilepath)
+        if len(blocks_to_insert) == 0:
+            return
+        
+        # turn the PyMuPDF blocks to vectors
+        vectors = vector_embed.encode(blocks_to_insert, normalize_embeddings=True)
 
-            # in the case that we for some reason redo an insert, just remove
-            # the old one
-            cur.execute("""
-                DELETE FROM doc_chunks
-                WHERE document_id = %s
-            """, (document_id,))
+        # insert to vector db
+        with psycopg.connect(db_url) as conn:
+            register_vector(conn)
 
-            # inserts the chunks and associated text
-            
-            # stores a unique ID for each chunk, as well as information
-            # such as user and document
-            for block, vector in zip(blocks_to_insert, vectors):
+            with conn.cursor() as cur:
+                # this first query is just for stability, not sure if necessary
+
+                # in the case that we for some reason redo an insert, just remove
+                # the old one
                 cur.execute("""
-                    INSERT INTO doc_chunks (
-                        chunk_id,
+                    DELETE FROM doc_chunks
+                    WHERE document_id = %s
+                """, (document_id,))
+
+                # inserts the chunks and associated text
+
+                # stores a unique ID for each chunk, as well as information
+                # such as user and document
+                for block, vector in zip(blocks_to_insert, vectors):
+                    cur.execute("""
+                        INSERT INTO doc_chunks (
+                            chunk_id,
+                            document_id,
+                            user_id,
+                            text,
+                            embedding
+                        )
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (
+                        str(uuid.uuid4()),
                         document_id,
-                        user_id,
-                        text,
-                        embedding
-                    )
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (
-                    str(uuid.uuid4()),
-                    document_id,
-                    uid,
-                    block,
-                    vector.tolist()
-                ))
-        conn.commit()
+                        uid,
+                        block,
+                        vector.tolist()
+                    ))
+            conn.commit()
+    # we need to guarantee that the temp file is removed
+    # so that is what the finally block is for
+    finally:
+        if os.path.exists(tempfilepath):
+            os.remove(tempfilepath)
 
 
 
@@ -409,8 +424,8 @@ def upload_document():
 
     #### TEMPORARY #####
     # This is for testing purposes of inserting to the vector DB
-    # THIS IS TEMPORARILY DISABLED WHILE MINIO INTEGRATION IS BEING ADDED
-    #insert_to_vectordb(user_id, document_id, stored_path)
+    # Likely to be moved as we integrate celery
+    insert_to_vectordb(user_id, document_id, stored_path)
 
 
     return jsonify({

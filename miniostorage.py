@@ -33,6 +33,14 @@ def upload_pdf(file, fname):
         content_type=file.content_type
     )
 
+# gets pdf data (this is specifically for vector embedding)
+def get_pdf(fname, fpath):
+    client.fget_object(
+        bucket,
+        fname,
+        fpath
+    )
+
 # remove a pdf from the bucket
 def delete_pdf(fname):
     client.remove_object(
