@@ -308,12 +308,12 @@ def search_chunks_by_embedding(uid, query):
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT dc.text, dc.document_id, d.filename,
-                       dc.embedding <-> %s::vector AS distance
+                       dc.embedding <=> %s::vector AS distance
                 FROM doc_chunks dc
                 JOIN documents d
                   ON dc.document_id = d.document_id
                 WHERE dc.user_id = %s
-                ORDER BY dc.embedding <-> %s::vector
+                ORDER BY dc.embedding <=> %s::vector
                 LIMIT 5
             """, (query_vector.tolist(), uid, query_vector.tolist()))
 
