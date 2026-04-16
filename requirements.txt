@@ -4,3 +4,4 @@ PyJWT == 2.12.1
 PyMuPDF
 pgvector
 sentence-transformers
+minio
