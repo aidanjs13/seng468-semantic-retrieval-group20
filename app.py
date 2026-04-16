@@ -11,6 +11,9 @@ from sentence_transformers import SentenceTransformer
 import pymupdf
 import re
 
+from miniostorage import init_minio_bucket, upload_pdf, delete_pdf
+
+
 app = Flask(__name__)
 
 
@@ -392,10 +395,9 @@ def upload_document():
 
     document_id = str(uuid.uuid4())
     stored_filename = f"{document_id}_{uploadedFile.filename}"
-    stored_path = os.path.join(UPLOADDIR, stored_filename)
-    os.makedirs(UPLOADDIR, exist_ok=True) #make sure foler exists
+    stored_path = f"{user_id}/{stored_filename}"
 
-    uploadedFile.save(stored_path)
+    upload_pdf(uploadedFile, stored_path)
 
     insertDocument(
         document_id=document_id,
@@ -407,7 +409,8 @@ def upload_document():
 
     #### TEMPORARY #####
     # This is for testing purposes of inserting to the vector DB
-    insert_to_vectordb(user_id, document_id, stored_path)
+    # THIS IS TEMPORARILY DISABLED WHILE MINIO INTEGRATION IS BEING ADDED
+    #insert_to_vectordb(user_id, document_id, stored_path)
 
 
     return jsonify({
@@ -441,8 +444,7 @@ def delete_document(document_id):
     if doc is None:
         return jsonify({"error": "Document not found"}), 404
 
-    if os.path.exists(doc["stored_path"]):
-        os.remove(doc["stored_path"])
+    delete_pdf(doc["stored_path"])
 
     delete_document_from_db(user_id, document_id)
 
@@ -473,4 +475,5 @@ def search():
 if __name__ == "__main__":
     # initialize db then expose on port 8080
     init_db()
+    init_minio_bucket()
     app.run(host="0.0.0.0", port=8080, debug=True)
