@@ -5,3 +5,4 @@ PyMuPDF
 pgvector
 sentence-transformers
 minio
+celery

@@ -24,6 +24,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      rabbitmq:
+        condition: service_started
 
   minio:
     image: quay.io/minio/minio
@@ -36,6 +38,31 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - minio_data:/data
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+
+  worker:
+    build: .
+    # https://docs.celeryq.dev/en/stable/reference/cli.html#worker
+    # docs for celery cli are here
+    # should experiment with concurrency level
+    command: celery -A celery_worker.cel worker --loglevel=DEBUG
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
 
 volumes:
   postgres_data:

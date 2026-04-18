@@ -11,7 +11,9 @@ from sentence_transformers import SentenceTransformer
 import pymupdf
 import re
 
+# imports from our other files
 from miniostorage import init_minio_bucket, upload_pdf, get_pdf, delete_pdf
+from celery_worker import process_doc
 
 
 app = Flask(__name__)
@@ -422,10 +424,13 @@ def upload_document():
         status="processing"
     )
 
-    #### TEMPORARY #####
-    # This is for testing purposes of inserting to the vector DB
-    # Likely to be moved as we integrate celery
-    insert_to_vectordb(user_id, document_id, stored_path)
+    # Explanation of this code:
+    # This is where the async processing begins. Basically:
+    # - Celery gets the task
+    # - Sends it to RabbitMQ
+    # - RabbitMQ queues the task
+    # - A celery worker gets the task when free
+    process_doc.delay(user_id, document_id, stored_path)
 
 
     return jsonify({
