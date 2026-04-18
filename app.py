@@ -13,7 +13,6 @@ import re
 
 # imports from our other files
 from miniostorage import init_minio_bucket, upload_pdf, get_pdf, delete_pdf
-from celery_worker import process_doc
 
 
 app = Flask(__name__)
@@ -430,6 +429,8 @@ def upload_document():
     # - Sends it to RabbitMQ
     # - RabbitMQ queues the task
     # - A celery worker gets the task when free
+    from celery_worker import process_doc
+    # The import line is here, because there was a circular import error
     process_doc.delay(user_id, document_id, stored_path)
 
 
