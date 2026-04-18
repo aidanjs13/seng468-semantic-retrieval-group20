@@ -19,7 +19,8 @@ def init_minio_bucket():
     if not client.bucket_exists(bucket):
         client.make_bucket(bucket)
 
-# this is uploading as a stream so we don't need to 
+# this is uploading as a stream so we don't need to download locally.
+# basically, avoiding temp files for the vector upload
 def upload_pdf(file, fname):
     file.stream.seek(0, os.SEEK_END)
     filesize = file.stream.tell()
