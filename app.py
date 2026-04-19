@@ -11,6 +11,7 @@ from sentence_transformers import SentenceTransformer
 import pymupdf
 import re
 
+
 # imports from our other files
 from miniostorage import init_minio_bucket, upload_pdf, get_pdf, delete_pdf
 
@@ -57,6 +58,16 @@ def init_db():
                 text TEXT NOT NULL,
                 embedding VECTOR(384)
                 )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS doc_chunks_embedding_hnsw_idx
+                ON doc_chunks
+                USING hnsw (embedding vector_cosine_ops)
+            """)
+
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS doc_chunks_user_id_idx
+                ON doc_chunks (user_id)
             """)
             
 
