@@ -1,5 +1,6 @@
 import os
 from minio import Minio
+from minio.error import S3Error
 
 # contains the helpers for minio upload
 
@@ -16,8 +17,11 @@ client = Minio(
 
 # this is just checking to ensure the bucket exists for persistent storage
 def init_minio_bucket():
-    if not client.bucket_exists(bucket):
+    try:
         client.make_bucket(bucket)
+    except S3Error as e:
+        if e.code not in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
+            raise
 
 # this is uploading as a stream so we don't need to download locally.
 # basically, avoiding temp files for the vector upload

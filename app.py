@@ -58,6 +58,16 @@ def init_db():
                 embedding VECTOR(384)
                 )
             """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS doc_chunks_embedding_hnsw_idx
+                ON doc_chunks
+                USING hnsw (embedding vector_cosine_ops)
+            """)
+
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS doc_chunks_user_id_idx
+                ON doc_chunks (user_id)
+            """)
             
 
 # Queries db for a user

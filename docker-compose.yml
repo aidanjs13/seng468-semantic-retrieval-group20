@@ -13,10 +13,49 @@ services:
       timeout: 5s
       retries: 10
 
-  app:
-    build: .
+  nginx:
+    image: nginx:latest
     ports:
-      - "8080:8080"
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app-replica1
+      - app-replica2
+      - app-replica3
+
+  app-replica1:
+    build: .
+    expose:
+      - "8080"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+
+  app-replica2:
+    build: .
+    expose:
+      - "8080"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+
+  app-replica3:
+    build: .
+    expose:
+      - "8080"
     env_file:
       - .env
     depends_on:
