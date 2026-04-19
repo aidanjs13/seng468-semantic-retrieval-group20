@@ -37,6 +37,10 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+    environment:
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      TOKENIZERS_PARALLELISM: "false"
 
   app-replica2:
     build: .
@@ -51,6 +55,11 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+    environment:
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      TOKENIZERS_PARALLELISM: "false"
+
 
   app-replica3:
     build: .
@@ -65,6 +74,11 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+    environment:
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      TOKENIZERS_PARALLELISM: "false"
+
 
   minio:
     image: quay.io/minio/minio
