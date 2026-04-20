@@ -259,6 +259,13 @@ def insert_to_vectordb(uid, document_id, pdf_name):
         get_pdf(pdf_name, tempfilepath)
 
         blocks_to_insert = pdf_to_paragraphs(tempfilepath)
+
+        blocks_to_insert = [
+            block.replace("\x00", "").strip()
+            for block in blocks_to_insert
+                if block.replace("\x00", "").strip()
+        ]
+
         if len(blocks_to_insert) == 0:
             return
         
