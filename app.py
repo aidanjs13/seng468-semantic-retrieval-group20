@@ -142,9 +142,10 @@ def getUserIdFromToken():
         return None
 
 def insertDocument(document_id, user_id, filename, stored_path, status):
+    upload_date = datetime.now(timezone.utc)
     with psycopg.connect(db_url) as conn:
         with conn.cursor() as cur:
-            cur.execute("""INSERT INTO documents (document_id, user_id, filename, stored_path, status) VALUES (%s, %s, %s, %s, %s)""", (document_id, user_id, filename, stored_path, status))
+            cur.execute("""INSERT INTO documents (document_id, user_id, filename, stored_path, status, upload_date) VALUES (%s, %s, %s, %s, %s, %s)""", (document_id, user_id, filename, stored_path, status, upload_date))
         conn.commit()
 
 # placeholder search (may be moved to worker depending on final structure)
@@ -187,7 +188,6 @@ def get_documents_list(uid):
             "filename": row[1],
             "upload_date": row[2],
             "status": row[3],
-            "page_count": None
         }
         for row in rows
     ]
